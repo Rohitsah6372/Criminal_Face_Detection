@@ -2,6 +2,39 @@
 {% block content %}
 <h2>Live Detection</h2>
 <div class="mt-3">
-  <img src="/live_detection" id="live-video" class="img-fluid border" alt="Live Video Stream">
+  <div id="videoAlert" class="alert alert-warning d-none">No webcam detected and no video uploaded. Please upload a video for detection.</div>
+  <img id="live-video" class="img-fluid border d-none" alt="Live Video Stream">
 </div>
+<script>
+// Get video filename from query string
+function getQueryParam(name) {
+  const url = new URL(window.location.href);
+  return url.searchParams.get(name);
+}
+const videoParam = getQueryParam('video');
+const img = document.getElementById('live-video');
+const alertDiv = document.getElementById('videoAlert');
+
+function showAlert() {
+  img.classList.add('d-none');
+  alertDiv.classList.remove('d-none');
+}
+
+function showVideo() {
+  img.classList.remove('d-none');
+  alertDiv.classList.add('d-none');
+}
+
+if (videoParam) {
+  img.src = `/live_detection?video=${encodeURIComponent(videoParam)}`;
+  showVideo();
+} else {
+  img.src = '/live_detection';
+  showVideo();
+}
+
+img.onerror = function() {
+  showAlert();
+};
+</script>
 {% endblock %} 

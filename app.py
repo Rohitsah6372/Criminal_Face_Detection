@@ -162,51 +162,26 @@ def upload_video():
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
+    # Do not process video here, just return filename for live detection
+    return jsonify({'status': 'success', 'video_filename': filename})
 
-    # Load all criminal encodings
-    criminals = Criminal.query.all()
-    known_encodings = [c.face_encoding for c in criminals]
-    known_names = [c.name for c in criminals]
-    detected = set()
-
-    # Process video
-    video = cv2.VideoCapture(filepath)
-    while True:
-        ret, frame = video.read()
-        if not ret:
-            break
-        rgb_frame = frame[:, :, ::-1]
-        face_locations = face_recognition.face_locations(rgb_frame)
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-        for face_encoding, face_location in zip(face_encodings, face_locations):
-            matches = face_recognition.compare_faces(known_encodings, face_encoding, tolerance=0.5)
-            name = None
-            for idx, match in enumerate(matches):
-                if match:
-                    name = known_names[idx]
-                    detected.add(name)
-                    break
-    video.release()
-    # Log detections
-    for name in detected:
-        log = DetectionLog(criminal_name=name, detection_type='video')
-        db.session.add(log)
-    db.session.commit()
-    return jsonify({'status': 'success', 'detected_criminals': list(detected)})
-
-def gen_frames():
+def gen_frames(video_filename=None):
     with app.app_context():
         # Load all criminal encodings
         criminals = Criminal.query.all()
         known_encodings = [c.face_encoding for c in criminals]
         known_names = [c.name for c in criminals]
-    camera = cv2.VideoCapture(0)
+    if video_filename:
+        video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
+        camera = cv2.VideoCapture(video_path)
+    else:
+        camera = cv2.VideoCapture(0)
     detected_live = set()
     while True:
         success, frame = camera.read()
-        if not success:
+        if not success or frame is None:
             break
-        rgb_frame = frame[:, :, ::-1]
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         face_locations = face_recognition.face_locations(rgb_frame)
         face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
         for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
@@ -232,7 +207,8 @@ def gen_frames():
 
 @app.route('/live_detection')
 def live_detection():
-    return app.response_class(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    video_filename = request.args.get('video')
+    return app.response_class(gen_frames(video_filename), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/add_criminal_form', methods=['GET'])
 def add_criminal_form():

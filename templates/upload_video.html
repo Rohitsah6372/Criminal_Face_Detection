@@ -8,32 +8,50 @@
   </div>
   <button type="submit" class="btn btn-primary">Upload & Detect</button>
 </form>
+<div class="progress mt-3 d-none" id="uploadProgressWrapper">
+  <div id="uploadProgress" class="progress-bar" role="progressbar" style="width: 0%;">0%</div>
+</div>
 <div id="detectionResult" class="mt-4"></div>
 <script>
 document.getElementById('videoUploadForm').onsubmit = function(e) {
   e.preventDefault();
   const formData = new FormData(this);
   const resultDiv = document.getElementById('detectionResult');
-  resultDiv.innerHTML = '<div class="alert alert-info">Processing video, please wait...</div>';
-  fetch('/upload_video', {
-    method: 'POST',
-    body: formData
-  })
-    .then(res => res.json())
-    .then(data => {
-      if (data.status === 'success') {
-        if (data.detected_criminals.length > 0) {
-          resultDiv.innerHTML = `<div class='alert alert-danger'><strong>Detected Criminals:</strong><ul>${data.detected_criminals.map(name => `<li>${name}</li>`).join('')}</ul></div>`;
-        } else {
-          resultDiv.innerHTML = `<div class='alert alert-success'>No criminals detected in the video.</div>`;
-        }
+  const progressWrapper = document.getElementById('uploadProgressWrapper');
+  const progressBar = document.getElementById('uploadProgress');
+  progressWrapper.classList.remove('d-none');
+  progressBar.style.width = '0%';
+  progressBar.textContent = '0%';
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/upload_video', true);
+  xhr.upload.onprogress = function(e) {
+    if (e.lengthComputable) {
+      const percent = Math.round((e.loaded / e.total) * 100);
+      progressBar.style.width = percent + '%';
+      progressBar.textContent = percent + '%';
+    }
+  };
+  xhr.onload = function() {
+    progressWrapper.classList.add('d-none');
+    if (xhr.status === 200) {
+      const data = JSON.parse(xhr.responseText);
+      if (data.status === 'success' && data.video_filename) {
+        window.location.href = `/live_detection_page?video=${encodeURIComponent(data.video_filename)}`;
+      } else if (data.status === 'success') {
+        resultDiv.innerHTML = `<div class='alert alert-success'>No criminals detected in the video.</div>`;
       } else {
         resultDiv.innerHTML = `<div class='alert alert-danger'>${data.message}</div>`;
       }
-    })
-    .catch(() => {
+    } else {
       resultDiv.innerHTML = `<div class='alert alert-danger'>An error occurred during detection.</div>`;
-    });
+    }
+  };
+  xhr.onerror = function() {
+    progressWrapper.classList.add('d-none');
+    resultDiv.innerHTML = `<div class='alert alert-danger'>An error occurred during detection.</div>`;
+  };
+  xhr.send(formData);
 };
 </script>
 {% endblock %} 
