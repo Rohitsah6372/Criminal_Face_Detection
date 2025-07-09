@@ -8,6 +8,8 @@ import numpy as np
 import cv2
 import time
 from datetime import datetime
+import threading
+import queue
 
 app = Flask(__name__)
 
@@ -33,11 +35,30 @@ class Criminal(db.Model):
     def __repr__(self):
         return f'<Criminal {self.name}>'
 
+class CameraFeed(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    camera_url = db.Column(db.String(500), nullable=False)  # RTSP URL, IP camera URL, or device index
+    camera_type = db.Column(db.String(50), nullable=False)  # 'rtsp', 'ip', 'device', 'cctv'
+    location = db.Column(db.String(200), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<CameraFeed {self.name}>'
+
 class DetectionLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     criminal_name = db.Column(db.String(100), nullable=False)
-    detection_type = db.Column(db.String(20), nullable=False)  # 'video' or 'live'
+    detection_type = db.Column(db.String(20), nullable=False)  # 'video', 'live', 'cctv'
+    camera_feed_id = db.Column(db.Integer, db.ForeignKey('camera_feed.id'), nullable=True)
+    camera_feed_name = db.Column(db.String(100), nullable=True)
+    confidence_score = db.Column(db.Float, nullable=True)
+
+    def __repr__(self):
+        return f'<DetectionLog {self.criminal_name} at {self.timestamp}>'
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -165,50 +186,156 @@ def upload_video():
     # Do not process video here, just return filename for live detection
     return jsonify({'status': 'success', 'video_filename': filename})
 
-def gen_frames(video_filename=None):
+def gen_frames(video_filename=None, camera_feed_id=None):
     with app.app_context():
         # Load all criminal encodings
         criminals = Criminal.query.all()
         known_encodings = [c.face_encoding for c in criminals]
         known_names = [c.name for c in criminals]
-    if video_filename:
-        video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
-        camera = cv2.VideoCapture(video_path)
-    else:
-        camera = cv2.VideoCapture(0)
-    detected_live = set()
-    while True:
-        success, frame = camera.read()
-        if not success or frame is None:
-            break
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        face_locations = face_recognition.face_locations(rgb_frame)
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-        for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-            matches = face_recognition.compare_faces(known_encodings, face_encoding, tolerance=0.5)
-            name = "Unknown"
-            for idx, match in enumerate(matches):
-                if match:
-                    name = known_names[idx]
-                    if name not in detected_live:
-                        detected_live.add(name)
-                        with app.app_context():
-                            log = DetectionLog(criminal_name=name, detection_type='live')
-                            db.session.add(log)
-                            db.session.commit()
-                    break
-            # Draw bounding box and label
-            cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-            cv2.putText(frame, name, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-        ret, buffer = cv2.imencode('.jpg', frame)
+    
+    camera = None
+    try:
+        if camera_feed_id:
+            # Get camera feed details
+            camera_feed = CameraFeed.query.get(camera_feed_id)
+            if not camera_feed or not camera_feed.is_active:
+                return
+            
+            # Handle different camera types
+            if camera_feed.camera_type == 'device':
+                try:
+                    camera = cv2.VideoCapture(int(camera_feed.camera_url))
+                except ValueError:
+                    camera = cv2.VideoCapture(0)
+            else:
+                # For RTSP, IP cameras, or other URLs
+                camera = cv2.VideoCapture(camera_feed.camera_url)
+        elif video_filename:
+            video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
+            camera = cv2.VideoCapture(video_path)
+        else:
+            # Try to find an available camera
+            camera = find_available_camera()
+        
+        if camera is None or not camera.isOpened():
+            # Generate error frame
+            error_frame = generate_error_frame("Camera not available")
+            ret, buffer = cv2.imencode('.jpg', error_frame)
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            return
+        
+        detected_live = set()
+        while True:
+            success, frame = camera.read()
+            if not success or frame is None:
+                break
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            face_locations = face_recognition.face_locations(rgb_frame)
+            face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+            
+            for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+                matches = face_recognition.compare_faces(known_encodings, face_encoding, tolerance=0.5)
+                name = "Unknown"
+                confidence = 0.0
+                
+                for idx, match in enumerate(matches):
+                    if match:
+                        name = known_names[idx]
+                        # Calculate confidence score
+                        face_distances = face_recognition.face_distance(known_encodings, face_encoding)
+                        confidence = 1 - face_distances[idx]
+                        
+                        if name not in detected_live:
+                            detected_live.add(name)
+                            with app.app_context():
+                                log = DetectionLog(
+                                    criminal_name=name, 
+                                    detection_type='cctv' if camera_feed_id else 'live',
+                                    camera_feed_id=camera_feed_id,
+                                    camera_feed_name=camera_feed.name if camera_feed_id else None,
+                                    confidence_score=confidence
+                                )
+                                db.session.add(log)
+                                db.session.commit()
+                        break
+                
+                # Draw bounding box and label
+                color = (0, 0, 255) if name != "Unknown" else (0, 255, 0)
+                cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
+                label = f"{name} ({confidence:.2f})" if name != "Unknown" else name
+                cv2.putText(frame, label, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+    except Exception as e:
+        print(f"Error in gen_frames: {e}")
+        # Generate error frame
+        error_frame = generate_error_frame(f"Error: {str(e)}")
+        ret, buffer = cv2.imencode('.jpg', error_frame)
         frame_bytes = buffer.tobytes()
         yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-    camera.release()
+    finally:
+        if camera is not None:
+            camera.release()
+
+def find_available_camera():
+    """Find an available camera by trying different device indices"""
+    for i in range(4):  # Try cameras 0-3
+        try:
+            camera = cv2.VideoCapture(i)
+            if camera.isOpened():
+                # Test if we can actually read a frame
+                ret, frame = camera.read()
+                if ret and frame is not None:
+                    return camera
+                else:
+                    camera.release()
+            else:
+                camera.release()
+        except Exception as e:
+            print(f"Error trying camera {i}: {e}")
+            continue
+    return None
+
+def generate_error_frame(message):
+    """Generate an error frame with a message"""
+    # Create a black frame
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    
+    # Add error text
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    thickness = 2
+    color = (255, 255, 255)
+    
+    # Get text size
+    (text_width, text_height), baseline = cv2.getTextSize(message, font, font_scale, thickness)
+    
+    # Calculate position to center the text
+    x = (frame.shape[1] - text_width) // 2
+    y = (frame.shape[0] + text_height) // 2
+    
+    # Add text
+    cv2.putText(frame, message, (x, y), font, font_scale, color, thickness)
+    
+    # Add additional help text
+    help_text = "Check camera connection or try video upload"
+    (help_width, help_height), _ = cv2.getTextSize(help_text, font, 0.7, 1)
+    help_x = (frame.shape[1] - help_width) // 2
+    help_y = y + 50
+    cv2.putText(frame, help_text, (help_x, help_y), font, 0.7, (200, 200, 200), 1)
+    
+    return frame
 
 @app.route('/live_detection')
 def live_detection():
     video_filename = request.args.get('video')
-    return app.response_class(gen_frames(video_filename), mimetype='multipart/x-mixed-replace; boundary=frame')
+    camera_feed_id = request.args.get('camera_feed_id')
+    if camera_feed_id:
+        camera_feed_id = int(camera_feed_id)
+    return app.response_class(gen_frames(video_filename, camera_feed_id), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/add_criminal_form', methods=['GET'])
 def add_criminal_form():
@@ -240,6 +367,134 @@ def detection_logs():
 @app.route('/detection_logs_page', methods=['GET'])
 def detection_logs_page():
     return render_template('detection_logs.html')
+
+# Camera Feed Management Routes
+@app.route('/add_camera_feed', methods=['POST'])
+def add_camera_feed():
+    name = request.form.get('name')
+    camera_url = request.form.get('camera_url')
+    camera_type = request.form.get('camera_type')
+    location = request.form.get('location')
+    description = request.form.get('description')
+    
+    if not name or not camera_url or not camera_type:
+        return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
+    
+    try:
+        camera_feed = CameraFeed(
+            name=name,
+            camera_url=camera_url,
+            camera_type=camera_type,
+            location=location,
+            description=description
+        )
+        db.session.add(camera_feed)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Camera feed added successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/camera_feeds', methods=['GET'])
+def list_camera_feeds():
+    camera_feeds = CameraFeed.query.all()
+    result = []
+    for cf in camera_feeds:
+        result.append({
+            'id': cf.id,
+            'name': cf.name,
+            'camera_url': cf.camera_url,
+            'camera_type': cf.camera_type,
+            'location': cf.location,
+            'description': cf.description,
+            'is_active': cf.is_active,
+            'created_at': cf.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    return jsonify(result)
+
+@app.route('/edit_camera_feed/<int:camera_feed_id>', methods=['POST'])
+def edit_camera_feed(camera_feed_id):
+    camera_feed = CameraFeed.query.get_or_404(camera_feed_id)
+    name = request.form.get('name')
+    camera_url = request.form.get('camera_url')
+    camera_type = request.form.get('camera_type')
+    location = request.form.get('location')
+    description = request.form.get('description')
+    is_active = request.form.get('is_active')
+    
+    if name:
+        camera_feed.name = name
+    if camera_url:
+        camera_feed.camera_url = camera_url
+    if camera_type:
+        camera_feed.camera_type = camera_type
+    if location is not None:
+        camera_feed.location = location
+    if description is not None:
+        camera_feed.description = description
+    if is_active is not None:
+        camera_feed.is_active = is_active.lower() == 'true'
+    
+    try:
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Camera feed updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/delete_camera_feed/<int:camera_feed_id>', methods=['POST'])
+def delete_camera_feed(camera_feed_id):
+    camera_feed = CameraFeed.query.get_or_404(camera_feed_id)
+    try:
+        db.session.delete(camera_feed)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Camera feed deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/test_camera_feed/<int:camera_feed_id>', methods=['GET'])
+def test_camera_feed(camera_feed_id):
+    camera_feed = CameraFeed.query.get_or_404(camera_feed_id)
+    camera = None
+    try:
+        if camera_feed.camera_type == 'device':
+            try:
+                camera = cv2.VideoCapture(int(camera_feed.camera_url))
+            except ValueError:
+                # Try to find an available camera
+                camera = find_available_camera()
+                if camera is None:
+                    return jsonify({'status': 'error', 'message': 'No camera devices available'}), 400
+        else:
+            camera = cv2.VideoCapture(camera_feed.camera_url)
+        
+        if camera is None or not camera.isOpened():
+            return jsonify({'status': 'error', 'message': 'Cannot connect to camera feed'}), 400
+        
+        ret, frame = camera.read()
+        if ret and frame is not None:
+            return jsonify({'status': 'success', 'message': 'Camera feed is working'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Camera feed is not working - no video signal'}), 400
+            
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Error testing camera: {str(e)}'}), 500
+    finally:
+        if camera is not None:
+            camera.release()
+
+@app.route('/add_camera_feed_form', methods=['GET'])
+def add_camera_feed_form():
+    return render_template('add_camera_feed.html')
+
+@app.route('/camera_feeds_page', methods=['GET'])
+def camera_feeds_page():
+    return render_template('camera_feeds.html')
+
+@app.route('/cctv_detection_page', methods=['GET'])
+def cctv_detection_page():
+    return render_template('cctv_detection.html')
 
 if __name__ == '__main__':
     with app.app_context():

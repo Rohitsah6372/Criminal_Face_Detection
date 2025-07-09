@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Add Camera Feed{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Add New Camera Feed</h2>
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <form id="addCameraForm">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Camera Name *</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="camera_type" class="form-label">Camera Type *</label>
+                            <select class="form-control" id="camera_type" name="camera_type" required>
+                                <option value="">Select Camera Type</option>
+                                <option value="device">Local Device (0, 1, 2...)</option>
+                                <option value="rtsp">RTSP Stream</option>
+                                <option value="ip">IP Camera</option>
+                                <option value="cctv">CCTV System</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="camera_url" class="form-label">Camera URL/Device Index *</label>
+                            <input type="text" class="form-control" id="camera_url" name="camera_url" required>
+                            <div class="form-text">
+                                <strong>Examples:</strong><br>
+                                • Device: 0, 1, 2 (for local cameras)<br>
+                                • RTSP: rtsp://username:password@ip:port/stream<br>
+                                • IP Camera: http://ip:port/video<br>
+                                • CCTV: rtsp://admin:password@192.168.1.100:554/stream1
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="location" class="form-label">Location</label>
+                            <input type="text" class="form-control" id="location" name="location" placeholder="e.g., Main Entrance, Parking Lot">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="3" placeholder="Additional details about this camera feed"></textarea>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Add Camera Feed</button>
+                        <a href="/camera_feeds_page" class="btn btn-secondary">Cancel</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Camera Types Guide</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Local Device</h6>
+                    <p>Built-in or USB cameras connected to this computer.</p>
+                    
+                    <h6>RTSP Stream</h6>
+                    <p>Real-time streaming protocol cameras (most IP cameras).</p>
+                    
+                    <h6>IP Camera</h6>
+                    <p>Network cameras accessible via HTTP/HTTPS.</p>
+                    
+                    <h6>CCTV System</h6>
+                    <p>Professional surveillance system cameras.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('addCameraForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    fetch('/add_camera_feed', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Camera feed added successfully!');
+            window.location.href = '/camera_feeds_page';
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while adding the camera feed.');
+    });
+});
+
+// Update URL field placeholder based on camera type
+document.getElementById('camera_type').addEventListener('change', function() {
+    const urlField = document.getElementById('camera_url');
+    const type = this.value;
+    
+    switch(type) {
+        case 'device':
+            urlField.placeholder = '0, 1, 2... (device index)';
+            break;
+        case 'rtsp':
+            urlField.placeholder = 'rtsp://username:password@ip:port/stream';
+            break;
+        case 'ip':
+            urlField.placeholder = 'http://ip:port/video';
+            break;
+        case 'cctv':
+            urlField.placeholder = 'rtsp://admin:password@192.168.1.100:554/stream1';
+            break;
+        default:
+            urlField.placeholder = 'Enter camera URL or device index';
+    }
+});
+</script>
+{% endblock %} 

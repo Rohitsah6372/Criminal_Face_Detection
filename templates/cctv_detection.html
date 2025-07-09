@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}CCTV Detection{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-9">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 id="cameraTitle">CCTV Detection</h4>
+                    <div>
+                        <button class="btn btn-success" onclick="startDetection()" id="startBtn">
+                            <i class="fas fa-play"></i> Start Detection
+                        </button>
+                        <button class="btn btn-danger" onclick="stopDetection()" id="stopBtn" style="display: none;">
+                            <i class="fas fa-stop"></i> Stop Detection
+                        </button>
+                        <button class="btn btn-secondary" onclick="window.close()">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="text-center">
+                        <img id="videoFeed" src="" alt="CCTV Feed" style="max-width: 100%; height: auto; border: 2px solid #ddd;">
+                        <div id="noFeed" class="alert alert-info" style="display: none;">
+                            <i class="fas fa-video-slash"></i> No video feed available. Please start detection.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Detection Status</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <strong>Camera:</strong> <span id="cameraName">-</span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Status:</strong> 
+                        <span id="detectionStatus" class="badge bg-secondary">Stopped</span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Detections:</strong> <span id="detectionCount">0</span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Last Detection:</strong> <span id="lastDetection">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5>Recent Detections</h5>
+                </div>
+                <div class="card-body">
+                    <div id="recentDetections" style="max-height: 300px; overflow-y: auto;">
+                        <p class="text-muted">No detections yet</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5>Camera Info</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <strong>Type:</strong> <span id="cameraType">-</span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Location:</strong> <span id="cameraLocation">-</span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>URL:</strong> <small id="cameraUrl" class="text-muted">-</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let cameraId = null;
+let detectionActive = false;
+let detectionCount = 0;
+let recentDetections = [];
+
+// Get camera ID from URL parameters
+function getCameraId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('camera_id');
+}
+
+// Load camera information
+function loadCameraInfo() {
+    cameraId = getCameraId();
+    if (!cameraId) {
+        alert('No camera ID provided');
+        window.close();
+        return;
+    }
+    
+    fetch('/camera_feeds')
+        .then(response => response.json())
+        .then(data => {
+            const camera = data.find(c => c.id == cameraId);
+            if (camera) {
+                document.getElementById('cameraTitle').textContent = `CCTV Detection - ${camera.name}`;
+                document.getElementById('cameraName').textContent = camera.name;
+                document.getElementById('cameraType').textContent = camera.camera_type.toUpperCase();
+                document.getElementById('cameraLocation').textContent = camera.location || 'N/A';
+                document.getElementById('cameraUrl').textContent = camera.camera_url;
+            } else {
+                alert('Camera not found');
+                window.close();
+            }
+        })
+        .catch(error => {
+            console.error('Error loading camera info:', error);
+        });
+}
+
+function startDetection() {
+    if (!cameraId) return;
+    
+    detectionActive = true;
+    document.getElementById('startBtn').style.display = 'none';
+    document.getElementById('stopBtn').style.display = 'inline-block';
+    document.getElementById('detectionStatus').textContent = 'Active';
+    document.getElementById('detectionStatus').className = 'badge bg-success';
+    document.getElementById('noFeed').style.display = 'none';
+    
+    // Start video feed
+    const videoFeed = document.getElementById('videoFeed');
+    videoFeed.src = `/live_detection?camera_feed_id=${cameraId}`;
+    
+    // Start monitoring for detections
+    startDetectionMonitoring();
+}
+
+function stopDetection() {
+    detectionActive = false;
+    document.getElementById('startBtn').style.display = 'inline-block';
+    document.getElementById('stopBtn').style.display = 'none';
+    document.getElementById('detectionStatus').textContent = 'Stopped';
+    document.getElementById('detectionStatus').className = 'badge bg-secondary';
+    document.getElementById('noFeed').style.display = 'block';
+    
+    // Stop video feed
+    const videoFeed = document.getElementById('videoFeed');
+    videoFeed.src = '';
+}
+
+function startDetectionMonitoring() {
+    // Poll for new detections every 5 seconds
+    const detectionInterval = setInterval(() => {
+        if (!detectionActive) {
+            clearInterval(detectionInterval);
+            return;
+        }
+        
+        fetch('/detection_logs')
+            .then(response => response.json())
+            .then(data => {
+                // Filter detections for this camera
+                const cameraDetections = data.filter(log => 
+                    log.detection_type === 'cctv' && 
+                    log.camera_feed_name === document.getElementById('cameraName').textContent
+                );
+                
+                if (cameraDetections.length > detectionCount) {
+                    // New detections found
+                    const newDetections = cameraDetections.slice(0, cameraDetections.length - detectionCount);
+                    detectionCount = cameraDetections.length;
+                    
+                    newDetections.forEach(detection => {
+                        addDetectionToList(detection);
+                        updateDetectionStats(detection);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error monitoring detections:', error);
+            });
+    }, 5000);
+}
+
+function addDetectionToList(detection) {
+    const container = document.getElementById('recentDetections');
+    
+    // Remove "No detections yet" message if present
+    const noDetections = container.querySelector('.text-muted');
+    if (noDetections) {
+        noDetections.remove();
+    }
+    
+    // Create detection item
+    const detectionItem = document.createElement('div');
+    detectionItem.className = 'alert alert-warning alert-sm mb-2';
+    detectionItem.innerHTML = `
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <strong>${detection.criminal_name}</strong><br>
+                <small class="text-muted">${detection.timestamp}</small>
+            </div>
+            <span class="badge bg-danger">CCTV</span>
+        </div>
+    `;
+    
+    // Add to top of list
+    container.insertBefore(detectionItem, container.firstChild);
+    
+    // Keep only last 10 detections
+    const items = container.querySelectorAll('.alert');
+    if (items.length > 10) {
+        items[items.length - 1].remove();
+    }
+}
+
+function updateDetectionStats(detection) {
+    document.getElementById('detectionCount').textContent = detectionCount;
+    document.getElementById('lastDetection').textContent = detection.timestamp;
+    
+    // Show notification
+    showNotification(`Criminal detected: ${detection.criminal_name}`);
+}
+
+function showNotification(message) {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        <i class="fas fa-exclamation-triangle"></i> ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    loadCameraInfo();
+    
+    // Auto-start detection if camera ID is provided
+    if (getCameraId()) {
+        setTimeout(startDetection, 1000);
+    }
+});
+
+// Handle page unload
+window.addEventListener('beforeunload', function() {
+    detectionActive = false;
+});
+</script>
+
+<style>
+.alert-sm {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+#videoFeed {
+    max-height: 600px;
+    object-fit: contain;
+}
+</style>
+{% endblock %} 
