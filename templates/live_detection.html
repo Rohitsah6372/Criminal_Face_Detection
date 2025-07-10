@@ -260,7 +260,7 @@ let previousLogCount = 0;
 
 // Fetch detection logs
 function fetchDetectionLogs() {
-  fetch('/detection_logs')
+  fetch('/attendance_logs')
     .then(res => res.json())
     .then(data => {
       // Check if there are new detections
@@ -324,7 +324,7 @@ function showCooldownNotification(personName) {
 
 // Fetch criminal images
 function fetchCriminalImages() {
-  fetch('/criminals')
+  fetch('/employees')
     .then(res => res.json())
     .then(data => {
       data.forEach(criminal => {
@@ -484,7 +484,7 @@ function deleteAllDetections() {
   }
   
   // Delete all from database
-  fetch('/delete_all_detection_logs', {
+  fetch('/delete_all_attendance_logs', {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',

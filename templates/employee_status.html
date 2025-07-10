@@ -1,0 +1,223 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Employee Attendance Status</h2>
+<div class="row mt-3 mb-2">
+  <div class="col-md-6">
+    <input type="text" id="searchInput" class="form-control" placeholder="Search by employee name...">
+  </div>
+  <div class="col-md-6 text-end">
+    <button id="refreshBtn" class="btn btn-primary">
+      <i class="fas fa-sync-alt"></i> Refresh Status
+    </button>
+  </div>
+</div>
+
+<div class="row mt-3">
+  <div class="col-md-8">
+    <div class="card">
+      <div class="card-header bg-dark text-white">
+        <h5 class="mb-0">
+          <i class="fas fa-users"></i> Employee Status Board
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-hover" id="employee-status-table">
+            <thead class="table-dark">
+              <tr>
+                <th>Photo</th>
+                <th>Name</th>
+                <th>Employee ID</th>
+                <th>Status</th>
+                <th>Last Detected</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Employee status rows will be populated here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header bg-info text-white">
+        <h5 class="mb-0">
+          <i class="fas fa-chart-pie"></i> Status Summary
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row text-center">
+          <div class="col-6">
+            <div class="border rounded p-3 bg-success text-white">
+              <h3 id="presentCount">0</h3>
+              <small>Present</small>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="border rounded p-3 bg-secondary text-white">
+              <h3 id="absentCount">0</h3>
+              <small>Absent</small>
+            </div>
+          </div>
+        </div>
+        <hr>
+        <div class="mt-3">
+          <h6>Attendance Statistics</h6>
+          <p class="mb-1"><strong>Total Employees:</strong> <span id="totalCount">0</span></p>
+          <p class="mb-1"><strong>Attendance Rate:</strong> <span id="attendanceRate">0%</span></p>
+          <p class="mb-0"><strong>Last Updated:</strong> <span id="lastUpdated">-</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let employees = [];
+let employeeStatus = {};
+let previousStatus = {}; // Track previous status for notifications
+
+// Load employee status data from the new endpoint
+function loadEmployeeStatusData() {
+  fetch('/employee_status_data')
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        console.error('Error loading status data:', data.error);
+        return;
+      }
+      
+      employees = data.employees;
+      employeeStatus = {};
+      
+      // Convert to the format expected by the rendering functions
+      employees.forEach(employee => {
+        employeeStatus[employee.name] = {
+          status: employee.status,
+          lastDetected: employee.last_detected,
+          attendanceCount: employee.attendance_count
+        };
+      });
+      
+      // Check for status changes and show notifications
+      checkStatusChanges();
+      
+      renderEmployeeStatus();
+      updateSummary(data.summary);
+    })
+    .catch(error => {
+      console.error('Error loading employee status data:', error);
+    });
+}
+
+// Check for status changes and show notifications
+function checkStatusChanges() {
+  employees.forEach(employee => {
+    const currentStatus = employee.status;
+    const previousStatusForEmployee = previousStatus[employee.name];
+    
+    if (previousStatusForEmployee && previousStatusForEmployee !== currentStatus) {
+      // Status changed
+      if (currentStatus === 'present') {
+        showStatusNotification(`${employee.name} is now PRESENT`, 'success');
+      } else if (currentStatus === 'absent') {
+        showStatusNotification(`${employee.name} is now ABSENT`, 'warning');
+      }
+    }
+    
+    // Update previous status
+    previousStatus[employee.name] = currentStatus;
+  });
+}
+
+// Show status change notification
+function showStatusNotification(message, type) {
+  const notification = document.createElement('div');
+  notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+  notification.style.cssText = 'top: 20px; left: 20px; z-index: 9999; min-width: 300px;';
+  notification.innerHTML = `
+    <strong><i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'}"></i> ${message}</strong>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  `;
+  document.body.appendChild(notification);
+  
+  // Auto-remove after 4 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.remove();
+    }
+  }, 4000);
+}
+
+// Render employee status table
+function renderEmployeeStatus() {
+  const tbody = document.querySelector('#employee-status-table tbody');
+  const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+  
+  let filteredEmployees = employees;
+  if (searchQuery) {
+    filteredEmployees = employees.filter(employee => 
+      employee.name.toLowerCase().includes(searchQuery) ||
+      employee.employee_id.toLowerCase().includes(searchQuery)
+    );
+  }
+  
+  tbody.innerHTML = filteredEmployees.map(employee => {
+    const status = employeeStatus[employee.name] || { status: 'absent', lastDetected: null, attendanceCount: 0 };
+    const statusClass = status.status === 'present' ? 'success' : 'secondary';
+    const statusIcon = status.status === 'present' ? 'fa-check-circle' : 'fa-times-circle';
+    const statusText = status.status === 'present' ? 'Present' : 'Absent';
+    
+    return `
+      <tr>
+        <td>
+          <img src="${employee.image_url}" 
+               alt="${employee.name}" 
+               class="rounded" 
+               style="width: 50px; height: 50px; object-fit: cover;"
+               onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik0yNSAyNUMyOC4zMTM3IDI1IDMxIDIyLjMxMzcgMzEgMTlDMzEgMTUuNjg2MyAyOC4zMTM3IDEzIDI1IDEzQzIxLjY4NjMgMTMgMTkgMTUuNjg2MyAxOSAxOUMxOSAyMi4zMTM3IDIxLjY4NjMgMjUgMjUgMjVaIiBmaWxsPSIjQ0NDIi8+CjxwYXRoIGQ9Ik0yNSAzMEMzMi4xNzkgMzAgMzggMjQuMTc5IDM4IDE3SDM1QzM1IDIyLjUyMiAzMC41MjIgMjcgMjUgMjdDMTkuNDc4IDI3IDE1IDIyLjUyMiAxNSAxN0gxMkMxMiAyNC4xNzkgMTguODIxIDMwIDI1IDMwWiIgZmlsbD0iI0NDQyIvPgo8L3N2Zz4K'">
+        </td>
+        <td>
+          <strong>${employee.name}</strong>
+          ${status.attendanceCount > 0 ? `<br><small class="text-muted">Marked ${status.attendanceCount} times</small>` : ''}
+        </td>
+        <td>${employee.employee_id}</td>
+        <td>
+          <span class="badge bg-${statusClass}">
+            <i class="fas ${statusIcon}"></i> ${statusText}
+          </span>
+        </td>
+        <td>
+          ${status.lastDetected ? status.lastDetected : 'Never detected'}
+        </td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary view-details" 
+                  data-employee-name="${employee.name}"
+                  title="View attendance details">
+            <i class="fas fa-info-circle"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+document.getElementById('refreshBtn').addEventListener('click', loadEmployeeStatusData);
+document.getElementById('searchInput').addEventListener('input', renderEmployeeStatus);
+
+function updateSummary(summary) {
+  document.getElementById('presentCount').textContent = summary.present;
+  document.getElementById('absentCount').textContent = summary.absent;
+  document.getElementById('totalCount').textContent = summary.total;
+  document.getElementById('attendanceRate').textContent = summary.attendance_rate + '%';
+  document.getElementById('lastUpdated').textContent = summary.last_updated;
+}
+
+// Initial load
+loadEmployeeStatusData();
+</script>
+{% endblock %} 

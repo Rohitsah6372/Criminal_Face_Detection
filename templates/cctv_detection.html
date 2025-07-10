@@ -56,11 +56,11 @@
             
             <div class="card mt-3">
                 <div class="card-header">
-                    <h5>Recent Detections</h5>
+                    <h5>Recent Attendance</h5>
                 </div>
                 <div class="card-body">
                     <div id="recentDetections" style="max-height: 300px; overflow-y: auto;">
-                        <p class="text-muted">No detections yet</p>
+                        <p class="text-muted">No attendance records yet</p>
                     </div>
                 </div>
             </div>
@@ -165,13 +165,14 @@ function startDetectionMonitoring() {
             return;
         }
         
-        fetch('/detection_logs')
+        fetch('/attendance_logs')
             .then(response => response.json())
             .then(data => {
                 // Filter detections for this camera
                 const cameraDetections = data.filter(log => 
                     log.detection_type === 'cctv' && 
-                    log.camera_feed_name === document.getElementById('cameraName').textContent
+                    log.camera_feed_name && 
+                    log.camera_feed_name.trim().toLowerCase() === document.getElementById('cameraName').textContent.trim().toLowerCase()
                 );
                 
                 if (cameraDetections.length > detectionCount) {
@@ -194,7 +195,7 @@ function startDetectionMonitoring() {
 function addDetectionToList(detection) {
     const container = document.getElementById('recentDetections');
     
-    // Remove "No detections yet" message if present
+    // Remove "No attendance records yet" message if present
     const noDetections = container.querySelector('.text-muted');
     if (noDetections) {
         noDetections.remove();
@@ -206,7 +207,7 @@ function addDetectionToList(detection) {
     detectionItem.innerHTML = `
         <div class="d-flex justify-content-between align-items-center">
             <div>
-                <strong>${detection.criminal_name}</strong><br>
+                <strong>${detection.employee_name}</strong><br>
                 <small class="text-muted">${detection.timestamp}</small>
             </div>
             <span class="badge bg-danger">CCTV</span>
@@ -216,7 +217,7 @@ function addDetectionToList(detection) {
     // Add to top of list
     container.insertBefore(detectionItem, container.firstChild);
     
-    // Keep only last 10 detections
+    // Keep only last 10 attendance records
     const items = container.querySelectorAll('.alert');
     if (items.length > 10) {
         items[items.length - 1].remove();
@@ -228,7 +229,7 @@ function updateDetectionStats(detection) {
     document.getElementById('lastDetection').textContent = detection.timestamp;
     
     // Show notification
-    showNotification(`Criminal detected: ${detection.criminal_name}`);
+    showNotification(`Employee detected: ${detection.employee_name}`);
 }
 
 function showNotification(message) {

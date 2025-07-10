@@ -1,9 +1,9 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Detection Logs</h2>
+<h2>Attendance Logs</h2>
 <div class="row mt-3 mb-2">
   <div class="col-md-6">
-    <input type="text" id="searchInput" class="form-control" placeholder="Search by criminal name or type...">
+    <input type="text" id="searchInput" class="form-control" placeholder="Search by employee name or type...">
   </div>
 </div>
 <div class="table-responsive">
@@ -11,8 +11,8 @@
     <thead class="table-dark">
       <tr>
         <th>Timestamp</th>
-        <th>Criminal Name</th>
-        <th>Detection Type</th>
+        <th>Employee Name</th>
+        <th>Attendance Type</th>
       </tr>
     </thead>
     <tbody>
@@ -41,8 +41,8 @@ function renderTablePage(page) {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td>${log.timestamp}</td>
-      <td>${log.criminal_name}</td>
-      <td>${log.detection_type.charAt(0).toUpperCase() + log.detection_type.slice(1)}</td>
+      <td>${log.employee_name}</td>
+      <td>${log.attendance_type.charAt(0).toUpperCase() + log.attendance_type.slice(1)}</td>
     `;
     tbody.appendChild(row);
   });
@@ -69,8 +69,8 @@ function renderPagination() {
 function filterLogs() {
   const query = document.getElementById('searchInput').value.toLowerCase();
   filteredLogs = logsData.filter(log =>
-    log.criminal_name.toLowerCase().includes(query) ||
-    log.detection_type.toLowerCase().includes(query)
+    log.employee_name.toLowerCase().includes(query) ||
+    log.attendance_type.toLowerCase().includes(query)
   );
   currentPage = 1;
   renderTablePage(currentPage);

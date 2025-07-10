@@ -25,16 +25,16 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
 
-class Criminal(db.Model):
+class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    criminal_id = db.Column(db.String(50), unique=True, nullable=False)
+    employee_id = db.Column(db.String(50), unique=True, nullable=False)
     description = db.Column(db.Text, nullable=True)
     image_filename = db.Column(db.String(200), nullable=False)
     face_encoding = db.Column(db.PickleType, nullable=False)  # Store numpy array as binary
 
     def __repr__(self):
-        return f'<Criminal {self.name}>'
+        return f'<Employee {self.name}>'
 
 class CameraFeed(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -49,17 +49,17 @@ class CameraFeed(db.Model):
     def __repr__(self):
         return f'<CameraFeed {self.name}>'
 
-class DetectionLog(db.Model):
+class AttendanceLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    criminal_name = db.Column(db.String(100), nullable=False)
-    detection_type = db.Column(db.String(20), nullable=False)  # 'video', 'live', 'cctv'
+    employee_name = db.Column(db.String(100), nullable=False)
+    attendance_type = db.Column(db.String(20), nullable=False)  # 'video', 'live', 'cctv'
     camera_feed_id = db.Column(db.Integer, db.ForeignKey('camera_feed.id'), nullable=True)
     camera_feed_name = db.Column(db.String(100), nullable=True)
     confidence_score = db.Column(db.Float, nullable=True)
 
     def __repr__(self):
-        return f'<DetectionLog {self.criminal_name} at {self.timestamp}>'
+        return f'<AttendanceLog {self.employee_name} at {self.timestamp}>'
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -70,14 +70,14 @@ def allowed_file(filename):
 def home():
     return redirect('/live_detection_page')
 
-@app.route('/add_criminal', methods=['POST'])
-def add_criminal():
+@app.route('/add_employee', methods=['POST'])
+def add_employee():
     name = request.form.get('name')
-    criminal_id = request.form.get('criminal_id')
+    employee_id = request.form.get('employee_id')
     description = request.form.get('description')
     file = request.files.get('image')
 
-    if not name or not criminal_id or file is None or not hasattr(file, 'filename') or not file.filename or not allowed_file(file.filename):
+    if not name or not employee_id or file is None or not hasattr(file, 'filename') or not file.filename or not allowed_file(file.filename):
         return jsonify({'status': 'error', 'message': 'Missing or invalid data'}), 400
 
     filename = secure_filename(file.filename)
@@ -94,53 +94,53 @@ def add_criminal():
 
     # Store in DB
     try:
-        criminal = Criminal(
+        employee = Employee(
             name=name,
-            criminal_id=criminal_id,
+            employee_id=employee_id,
             description=description,
             image_filename=filename,
             face_encoding=face_encoding
         )
-        db.session.add(criminal)
+        db.session.add(employee)
         db.session.commit()
-        return jsonify({'status': 'success', 'message': 'Criminal added successfully'})
+        return jsonify({'status': 'success', 'message': 'Employee added successfully'})
     except Exception as e:
         if os.path.exists(filepath):
             os.remove(filepath)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/criminals', methods=['GET'])
-def list_criminals():
-    criminals = Criminal.query.all()
+@app.route('/employees', methods=['GET'])
+def list_employees():
+    employees = Employee.query.all()
     result = []
-    for c in criminals:
+    for e in employees:
         result.append({
-            'id': c.id,
-            'name': c.name,
-            'criminal_id': c.criminal_id,
-            'description': c.description,
-            'image_url': url_for('static', filename=f'uploads/{c.image_filename}', _external=True)
+            'id': e.id,
+            'name': e.name,
+            'employee_id': e.employee_id,
+            'description': e.description,
+            'image_url': url_for('static', filename=f'uploads/{e.image_filename}', _external=True)
         })
     return jsonify(result)
 
-@app.route('/edit_criminal/<int:criminal_id>', methods=['POST'])
-def edit_criminal(criminal_id):
-    criminal = Criminal.query.get_or_404(criminal_id)
+@app.route('/edit_employee/<int:employee_id>', methods=['POST'])
+def edit_employee(employee_id):
+    employee = Employee.query.get_or_404(employee_id)
     name = request.form.get('name')
-    new_criminal_id = request.form.get('criminal_id')
+    new_employee_id = request.form.get('employee_id')
     description = request.form.get('description')
     file = request.files.get('image')
 
     if name:
-        criminal.name = name
-    if new_criminal_id:
-        criminal.criminal_id = new_criminal_id
+        employee.name = name
+    if new_employee_id:
+        employee.employee_id = new_employee_id
     if description is not None:
-        criminal.description = description
+        employee.description = description
 
     if file and hasattr(file, 'filename') and file.filename and allowed_file(file.filename):
         # Remove old image
-        old_path = os.path.join(app.config['UPLOAD_FOLDER'], criminal.image_filename)
+        old_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.image_filename)
         if os.path.exists(old_path):
             os.remove(old_path)
         filename = secure_filename(file.filename)
@@ -152,26 +152,26 @@ def edit_criminal(criminal_id):
         if not encodings:
             os.remove(filepath)
             return jsonify({'status': 'error', 'message': 'No face detected in new image'}), 400
-        criminal.face_encoding = encodings[0]
-        criminal.image_filename = filename
+        employee.face_encoding = encodings[0]
+        employee.image_filename = filename
 
     try:
         db.session.commit()
-        return jsonify({'status': 'success', 'message': 'Criminal updated successfully'})
+        return jsonify({'status': 'success', 'message': 'Employee updated successfully'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/delete_criminal/<int:criminal_id>', methods=['POST'])
-def delete_criminal(criminal_id):
-    criminal = Criminal.query.get_or_404(criminal_id)
-    image_path = os.path.join(app.config['UPLOAD_FOLDER'], criminal.image_filename)
+@app.route('/delete_employee/<int:employee_id>', methods=['POST'])
+def delete_employee(employee_id):
+    employee = Employee.query.get_or_404(employee_id)
+    image_path = os.path.join(app.config['UPLOAD_FOLDER'], employee.image_filename)
     try:
-        db.session.delete(criminal)
+        db.session.delete(employee)
         db.session.commit()
         if os.path.exists(image_path):
             os.remove(image_path)
-        return jsonify({'status': 'success', 'message': 'Criminal deleted successfully'})
+        return jsonify({'status': 'success', 'message': 'Employee deleted successfully'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -192,41 +192,36 @@ def gen_frames(video_filename=None, camera_feed_id=None):
     ctx.push()
     camera = None
     try:
-        # Load all criminal encodings
-        criminals = Criminal.query.all()
-        known_encodings = [c.face_encoding for c in criminals]
-        known_names = [c.name for c in criminals]
+        # Load all employee encodings
+        employees = Employee.query.all()
+        known_encodings = [e.face_encoding for e in employees]
+        known_names = [e.name for e in employees]
 
         if camera_feed_id:
-            # Get camera feed details
             camera_feed = CameraFeed.query.get(camera_feed_id)
             if not camera_feed or not camera_feed.is_active:
                 return
-            # Handle different camera types
             if camera_feed.camera_type == 'device':
                 try:
                     camera = cv2.VideoCapture(int(camera_feed.camera_url))
                 except ValueError:
                     camera = cv2.VideoCapture(0)
             else:
-                # For RTSP, IP cameras, or other URLs
                 camera = cv2.VideoCapture(camera_feed.camera_url)
         elif video_filename:
             video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
             camera = cv2.VideoCapture(video_path)
         else:
-            # Try to find an available camera
             camera = find_available_camera()
 
         if camera is None or not camera.isOpened():
-            # Generate error frame
             error_frame = generate_error_frame("Camera not available")
             ret, buffer = cv2.imencode('.jpg', error_frame)
             frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
             return
 
-        detected_live = set()
+        detected_today = set()
         while True:
             success, frame = camera.read()
             if not success or frame is None:
@@ -243,42 +238,35 @@ def gen_frames(video_filename=None, camera_feed_id=None):
                 for idx, match in enumerate(matches):
                     if match:
                         name = known_names[idx]
-                        # Calculate confidence score
                         face_distances = face_recognition.face_distance(known_encodings, face_encoding)
                         confidence = 1 - face_distances[idx]
-
-                        # Check if this person was already detected recently (within configurable time window)
-                        cooldown_seconds = app.config.get('DETECTION_COOLDOWN_SECONDS', 30)
-                        recent_detection = DetectionLog.query.filter(
-                            DetectionLog.criminal_name == name,
-                            DetectionLog.timestamp >= datetime.utcnow() - timedelta(seconds=cooldown_seconds)
+                        # Only log attendance once per employee per day
+                        today = datetime.utcnow().date()
+                        recent_attendance = AttendanceLog.query.filter(
+                            AttendanceLog.employee_name == name,
+                            db.func.date(AttendanceLog.timestamp) == today
                         ).first()
-
-                        if not recent_detection:
-                            log = DetectionLog(
-                                criminal_name=name, 
-                                detection_type='cctv' if camera_feed_id else 'live',
+                        if not recent_attendance:
+                            log = AttendanceLog(
+                                employee_name=name,
+                                attendance_type='cctv' if camera_feed_id else 'live',
                                 camera_feed_id=camera_feed_id,
                                 camera_feed_name=camera_feed.name if camera_feed_id else None,
                                 confidence_score=confidence
                             )
                             db.session.add(log)
                             db.session.commit()
-                            detected_live.add(name)
+                            detected_today.add(name)
                         break
-
-                # Draw bounding box and label
                 color = (0, 0, 255) if name != "Unknown" else (0, 255, 0)
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
                 label = f"{name} ({confidence:.2f})" if name != "Unknown" else name
                 cv2.putText(frame, label, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-
             ret, buffer = cv2.imencode('.jpg', frame)
             frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
     except Exception as e:
         print(f"Error in gen_frames: {e}")
-        # Generate error frame
         error_frame = generate_error_frame(f"Error: {str(e)}")
         ret, buffer = cv2.imencode('.jpg', error_frame)
         frame_bytes = buffer.tobytes()
@@ -345,13 +333,13 @@ def live_detection():
         camera_feed_id = int(camera_feed_id)
     return app.response_class(gen_frames(video_filename, camera_feed_id), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/add_criminal_form', methods=['GET'])
-def add_criminal_form():
-    return render_template('add_criminal.html')
+@app.route('/add_employee_form', methods=['GET'])
+def add_employee_form():
+    return render_template('add_employee.html')
 
-@app.route('/criminals_page', methods=['GET'])
-def criminals_page():
-    return render_template('criminals.html')
+@app.route('/employees_page', methods=['GET'])
+def employees_page():
+    return render_template('employees.html')
 
 @app.route('/live_detection_page', methods=['GET'])
 def live_detection_page():
@@ -361,42 +349,43 @@ def live_detection_page():
 def upload_video_page():
     return render_template('upload_video.html')
 
-@app.route('/detection_logs', methods=['GET'])
-def detection_logs():
-    logs = DetectionLog.query.order_by(DetectionLog.timestamp.desc()).all()
+@app.route('/attendance_logs', methods=['GET'])
+def attendance_logs():
+    logs = AttendanceLog.query.order_by(AttendanceLog.timestamp.desc()).all()
     return jsonify([
         {
             'id': log.id,
             'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'criminal_name': log.criminal_name,
-            'detection_type': log.detection_type
+            'employee_name': log.employee_name,
+            'attendance_type': log.attendance_type,
+            'camera_feed_name': log.camera_feed_name  # Added for sidebar filter
         } for log in logs
     ])
 
-@app.route('/delete_detection_log/<int:log_id>', methods=['DELETE'])
-def delete_detection_log(log_id):
+@app.route('/delete_attendance_log/<int:log_id>', methods=['DELETE'])
+def delete_attendance_log(log_id):
     try:
-        log = DetectionLog.query.get_or_404(log_id)
+        log = AttendanceLog.query.get_or_404(log_id)
         db.session.delete(log)
         db.session.commit()
-        return jsonify({'status': 'success', 'message': 'Detection log deleted successfully'})
+        return jsonify({'status': 'success', 'message': 'Attendance log deleted successfully'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/delete_all_detection_logs', methods=['DELETE'])
-def delete_all_detection_logs():
+@app.route('/delete_all_attendance_logs', methods=['DELETE'])
+def delete_all_attendance_logs():
     try:
-        DetectionLog.query.delete()
+        AttendanceLog.query.delete()
         db.session.commit()
-        return jsonify({'status': 'success', 'message': 'All detection logs deleted successfully'})
+        return jsonify({'status': 'success', 'message': 'All attendance logs deleted successfully'})
     except Exception as e:
         db.session.rollback()
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/detection_logs_page', methods=['GET'])
-def detection_logs_page():
-    return render_template('detection_logs.html')
+@app.route('/attendance_logs_page', methods=['GET'])
+def attendance_logs_page():
+    return render_template('attendance_logs.html')
 
 # Camera Feed Management Routes
 @app.route('/add_camera_feed', methods=['POST'])
@@ -532,60 +521,60 @@ def get_detection_config():
         'cooldown_seconds': app.config.get('DETECTION_COOLDOWN_SECONDS', 30)
     })
 
-@app.route('/criminal_status_page', methods=['GET'])
-def criminal_status_page():
-    return render_template('criminal_status.html')
+@app.route('/employee_status_page', methods=['GET'])
+def employee_status_page():
+    return render_template('employee_status.html')
 
-@app.route('/criminal_status_data', methods=['GET'])
-def get_criminal_status_data():
-    """Get real-time criminal status data"""
+@app.route('/employee_status_data', methods=['GET'])
+def get_employee_status_data():
+    """Get real-time employee status data"""
     try:
-        # Get all criminals
-        criminals = Criminal.query.all()
-        criminal_data = []
+        # Get all employees
+        employees = Employee.query.all()
+        employee_data = []
         
-        # Get recent detection logs
+        # Get recent attendance logs
         cooldown_seconds = app.config.get('DETECTION_COOLDOWN_SECONDS', 30)
         recent_time = datetime.utcnow() - timedelta(seconds=cooldown_seconds)
         
-        recent_detections = DetectionLog.query.filter(
-            DetectionLog.timestamp >= recent_time
+        recent_attendances = AttendanceLog.query.filter(
+            AttendanceLog.timestamp >= recent_time
         ).all()
         
         # Create a map of recent detections
-        recent_detection_map = {}
-        for detection in recent_detections:
-            if detection.criminal_name not in recent_detection_map:
-                recent_detection_map[detection.criminal_name] = []
-            recent_detection_map[detection.criminal_name].append({
-                'timestamp': detection.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-                'detection_type': detection.detection_type,
-                'camera_feed_name': detection.camera_feed_name
+        recent_attendance_map = {}
+        for attendance in recent_attendances:
+            if attendance.employee_name not in recent_attendance_map:
+                recent_attendance_map[attendance.employee_name] = []
+            recent_attendance_map[attendance.employee_name].append({
+                'timestamp': attendance.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                'attendance_type': attendance.attendance_type,
+                'camera_feed_name': attendance.camera_feed_name
             })
         
-        # Build status data for each criminal
-        for criminal in criminals:
-            recent_detections_for_criminal = recent_detection_map.get(criminal.name, [])
-            is_present = len(recent_detections_for_criminal) > 0
+        # Build status data for each employee
+        for employee in employees:
+            recent_attendances_for_employee = recent_attendance_map.get(employee.name, [])
+            is_present = len(recent_attendances_for_employee) > 0
             
-            criminal_data.append({
-                'id': criminal.id,
-                'name': criminal.name,
-                'criminal_id': criminal.criminal_id,
-                'image_url': url_for('static', filename=f'uploads/{criminal.image_filename}', _external=True),
+            employee_data.append({
+                'id': employee.id,
+                'name': employee.name,
+                'employee_id': employee.employee_id,
+                'image_url': url_for('static', filename=f'uploads/{employee.image_filename}', _external=True),
                 'status': 'present' if is_present else 'absent',
-                'detection_count': len(recent_detections_for_criminal),
-                'last_detected': recent_detections_for_criminal[-1]['timestamp'] if recent_detections_for_criminal else None,
-                'recent_detections': recent_detections_for_criminal
+                'attendance_count': len(recent_attendances_for_employee),
+                'last_detected': recent_attendances_for_employee[-1]['timestamp'] if recent_attendances_for_employee else None,
+                'recent_attendances': recent_attendances_for_employee
             })
         
         return jsonify({
-            'criminals': criminal_data,
+            'employees': employee_data,
             'summary': {
-                'total': len(criminals),
-                'present': len([c for c in criminal_data if c['status'] == 'present']),
-                'absent': len([c for c in criminal_data if c['status'] == 'absent']),
-                'detection_rate': round((len([c for c in criminal_data if c['status'] == 'present']) / len(criminals)) * 100) if criminals else 0,
+                'total': len(employees),
+                'present': len([e for e in employee_data if e['status'] == 'present']),
+                'absent': len([e for e in employee_data if e['status'] == 'absent']),
+                'attendance_rate': round((len([e for e in employee_data if e['status'] == 'present']) / len(employees)) * 100) if employees else 0,
                 'last_updated': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             }
         })
