@@ -1,18 +1,18 @@
-# Criminal Face Recognition System
+# Employee Face Recognition System
 
-A comprehensive Flask-based web application for real-time criminal face detection and recognition using computer vision and machine learning. This system supports multiple camera feeds, video analysis, and provides a complete surveillance solution for security applications.
+A comprehensive Flask-based web application for real-time employee face detection and recognition using computer vision and machine learning. This system supports multiple camera feeds, video analysis, and provides a complete surveillance solution for security applications.
 
 ## 🚀 Features
 
-- **Real-time Face Detection**: Live camera feed analysis for instant criminal identification
+- **Real-time Face Detection**: Live camera feed analysis for instant employee identification
 - **CCTV/Camera Feed Integration**: Connect to external cameras, IP cameras, RTSP streams, and CCTV systems
 - **Video Upload & Analysis**: Process uploaded video files for face detection
-- **Criminal Database Management**: Add, edit, and delete criminal records with facial data
+- **Employee Database Management**: Add, edit, and delete employee records with facial data
 - **Detection Logging**: Track and view all detection events with timestamps and confidence scores
 - **Web-based Interface**: User-friendly web interface for all operations
 - **Face Encoding Storage**: Secure storage of facial encodings in SQLite database
 - **Multi-Camera Support**: Monitor multiple camera feeds simultaneously
-- **Real-time Notifications**: Instant alerts when criminals are detected
+- **Real-time Notifications**: Instant alerts when employees are detected
 - **Confidence Scoring**: Advanced face recognition with confidence metrics
 - **Production Ready**: WSGI server support for deployment
 
@@ -41,7 +41,7 @@ Before running this application, make sure you have:
 ### 1. Clone the Repository
 ```bash
 git clone <repository-url>
-cd criminal-face-recognition
+cd employee-face-recognition
 ```
 
 ### 2. Create Virtual Environment
@@ -123,11 +123,11 @@ gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
 
 ## 📖 Usage Guide
 
-### 1. Adding Criminals
-- Navigate to the "Add Criminal" page
+### 1. Adding Employees
+- Navigate to the "Add Employee" page
 - Fill in the required information:
   - Name
-  - Criminal ID
+  - Employee ID
   - Description (optional)
   - Upload a clear face image
 - The system will automatically encode the face and store it in the database
@@ -136,7 +136,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
 - Access the live detection page
 - Allow camera permissions when prompted
 - The system will analyze the video feed in real-time
-- Detected criminals will be highlighted with bounding boxes and names
+- Detected employees will be highlighted with bounding boxes and names
 - Detection events are automatically logged
 
 ### 3. CCTV/Camera Feed Detection
@@ -147,7 +147,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
   - **IP Camera**: Network cameras accessible via HTTP/HTTPS
   - **CCTV System**: Professional surveillance system cameras
 - Test camera connections before starting detection
-- Start detection on any camera feed to monitor for criminals
+- Start detection on any camera feed to monitor for employees
 - Real-time notifications and detection logs with confidence scores
 
 ### 4. Video Upload & Analysis
@@ -155,19 +155,19 @@ gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
 - The system will process the video frame by frame
 - Detection results will be displayed in real-time
 
-### 5. Managing Criminal Database
-- View all registered criminals in the database
-- Edit criminal information and images
-- Delete criminal records when needed
+### 5. Managing Employee Database
+- View all registered employees in the database
+- Edit employee information and images
+- Delete employee records when needed
 
 ### 6. Viewing Detection Logs
 - Access the detection logs page to view all detection events
-- Logs include timestamps, criminal names, detection types, camera feed information, and confidence scores
+- Logs include timestamps, employee names, detection types, camera feed information, and confidence scores
 
 ## 🗂️ Project Structure
 
 ```
-criminal-face-recognition/
+employee-face-recognition/
 ├── app.py                 # Main Flask application
 ├── wsgi.py               # Production WSGI entry point
 ├── config.py             # Configuration settings
@@ -178,8 +178,8 @@ criminal-face-recognition/
 ├── README.md            # This file
 ├── templates/           # HTML templates
 │   ├── base.html        # Base template
-│   ├── add_criminal.html # Add criminal form
-│   ├── criminals.html   # Criminal management page
+│   ├── add_employee.html # Add employee form
+│   ├── employees.html   # Employee management page
 │   ├── live_detection.html # Live detection interface
 │   ├── upload_video.html # Video upload page
 │   ├── detection_logs.html # Detection logs page
@@ -283,13 +283,13 @@ export FLASK_ENV="production"
 - External camera feeds (IP cameras, RTSP) work normally
 - Consider using Windows native Python for camera access
 
-## 🔄 API Endpoints
+## �� API Endpoints
 
-### Criminal Management
-- `POST /add_criminal` - Add new criminal record
-- `GET /criminals` - List all criminals
-- `POST /edit_criminal/<id>` - Edit criminal record
-- `POST /delete_criminal/<id>` - Delete criminal record
+### Employee Management
+- `POST /add_employee` - Add new employee record
+- `GET /employees` - List all employees
+- `POST /edit_employee/<id>` - Edit employee record
+- `POST /delete_employee/<id>` - Delete employee record
 
 ### Camera Feed Management
 - `POST /add_camera_feed` - Add new camera feed
@@ -304,8 +304,8 @@ export FLASK_ENV="production"
 - `GET /detection_logs` - Get detection logs
 
 ### Pages
-- `GET /add_criminal_form` - Add criminal form page
-- `GET /criminals_page` - Criminal management page
+- `GET /add_employee_form` - Add employee form page
+- `GET /employees_page` - Employee management page
 - `GET /live_detection_page` - Live detection page
 - `GET /upload_video_page` - Video upload page
 - `GET /detection_logs_page` - Detection logs page

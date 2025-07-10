@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Criminal Face Recognition System Startup Script
+# Employee Attendance System Startup Script
 # This script handles common issues in WSL environments
 
-echo "🚀 Starting Criminal Face Recognition System..."
+echo "🚀 Starting Employee Attendance System..."
 
 # Check if we're in WSL
 if grep -qi microsoft /proc/version; then

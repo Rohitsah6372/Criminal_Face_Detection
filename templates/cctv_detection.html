@@ -168,23 +168,26 @@ function startDetectionMonitoring() {
         fetch('/attendance_logs')
             .then(response => response.json())
             .then(data => {
-                // Filter detections for this camera
+                // Robust camera name comparison: trim, lowercase, collapse spaces
+                function normalizeName(name) {
+                    return name ? name.trim().replace(/\s+/g, ' ').toLowerCase() : '';
+                }
+                const sidebarCameraName = normalizeName(document.getElementById('cameraName').textContent);
                 const cameraDetections = data.filter(log => 
                     log.detection_type === 'cctv' && 
-                    log.camera_feed_name && 
-                    log.camera_feed_name.trim().toLowerCase() === document.getElementById('cameraName').textContent.trim().toLowerCase()
+                    normalizeName(log.camera_feed_name) === sidebarCameraName
                 );
-                
-                if (cameraDetections.length > detectionCount) {
-                    // New detections found
-                    const newDetections = cameraDetections.slice(0, cameraDetections.length - detectionCount);
-                    detectionCount = cameraDetections.length;
-                    
-                    newDetections.forEach(detection => {
-                        addDetectionToList(detection);
-                        updateDetectionStats(detection);
+                const container = document.getElementById('recentDetections');
+                container.innerHTML = '';
+                if (cameraDetections.length === 0) {
+                    container.innerHTML = '<p class="text-muted">No attendance records yet for this camera</p>';
+                } else {
+                    cameraDetections.slice(0, 10).forEach(attendance => {
+                        addAttendanceToList(attendance);
+                        updateAttendanceStats(attendance);
                     });
                 }
+                detectionCount = cameraDetections.length;
             })
             .catch(error => {
                 console.error('Error monitoring detections:', error);
@@ -192,7 +195,7 @@ function startDetectionMonitoring() {
     }, 5000);
 }
 
-function addDetectionToList(detection) {
+function addAttendanceToList(attendance) {
     const container = document.getElementById('recentDetections');
     
     // Remove "No attendance records yet" message if present
@@ -201,21 +204,25 @@ function addDetectionToList(detection) {
         noDetections.remove();
     }
     
-    // Create detection item
-    const detectionItem = document.createElement('div');
-    detectionItem.className = 'alert alert-warning alert-sm mb-2';
-    detectionItem.innerHTML = `
-        <div class="d-flex justify-content-between align-items-center">
+    // Create attendance item
+    const attendanceItem = document.createElement('div');
+    attendanceItem.className = 'alert alert-warning alert-sm mb-2';
+    attendanceItem.innerHTML = `
+        <div class="d-flex align-items-center">
+            <img src="${attendance.image_url || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCA1MCA1MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik0yNSAyNUMyOC4zMTM3IDI1IDMxIDIyLjMxMzcgMzEgMTlDMzEgMTUuNjg2MyAyOC4zMTM3IDEzIDI1IDEzQzIxLjY4NjMgMTMgMTkgMTUuNjg2MyAxOSAxOUMxOSAyMi4zMTM3IDIxLjY4NjMgMjUgMjUgMjVaIiBmaWxsPSIjQ0NDIi8+CjxwYXRoIGQ9Ik0yNSAzMEMzMi4xNzkgMzAgMzggMjQuMTc5IDM4IDE3SDM1QzM1IDIyLjUyMiAzMC41MjIgMjcgMjUgMjdDMTkuNDc4IDI3IDE1IDIyLjUyMiAxNSAxN0gxMkMxMiAyNC4xNzkgMTguODIxIDMwIDI1IDMwWiIgZmlsbD0iI0NDQyIvPgo8L3N2Zz4K'}" 
+                 alt="${attendance.employee_name}" 
+                 class="rounded me-2" 
+                 style="width: 40px; height: 40px; object-fit: cover;">
             <div>
-                <strong>${detection.employee_name}</strong><br>
-                <small class="text-muted">${detection.timestamp}</small>
+                <strong>${attendance.employee_name}</strong><br>
+                <small class="text-muted">${attendance.timestamp}</small>
             </div>
-            <span class="badge bg-danger">CCTV</span>
+            <span class="badge bg-danger ms-auto">CCTV</span>
         </div>
     `;
     
     // Add to top of list
-    container.insertBefore(detectionItem, container.firstChild);
+    container.insertBefore(attendanceItem, container.firstChild);
     
     // Keep only last 10 attendance records
     const items = container.querySelectorAll('.alert');
@@ -224,12 +231,12 @@ function addDetectionToList(detection) {
     }
 }
 
-function updateDetectionStats(detection) {
+function updateAttendanceStats(attendance) {
     document.getElementById('detectionCount').textContent = detectionCount;
-    document.getElementById('lastDetection').textContent = detection.timestamp;
+    document.getElementById('lastDetection').textContent = attendance.timestamp;
     
     // Show notification
-    showNotification(`Employee detected: ${detection.employee_name}`);
+    showNotification(`Employee detected: ${attendance.employee_name}`);
 }
 
 function showNotification(message) {

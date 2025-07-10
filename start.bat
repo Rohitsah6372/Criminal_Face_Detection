@@ -1,5 +1,5 @@
 @echo off
-echo 🚀 Starting Criminal Face Recognition System...
+echo 🚀 Starting Employee Attendance System...
 echo.
 
 REM Check if virtual environment is activated

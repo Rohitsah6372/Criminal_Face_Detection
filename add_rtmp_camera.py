@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to add RTMP camera feed to the criminal detection system
+Script to add RTMP camera feed to the employee attendance system
 """
 
 import requests
@@ -93,7 +93,7 @@ def test_camera_connection():
         return False
 
 if __name__ == "__main__":
-    print("🚀 Adding RTMP Camera Feed to Criminal Detection System")
+    print("🚀 Adding RTMP Camera Feed to Employee Attendance System")
     print("=" * 60)
     
     # Check if requests module is available

@@ -5,6 +5,11 @@
   <div class="col-md-6">
     <input type="text" id="searchInput" class="form-control" placeholder="Search by employee name or type...">
   </div>
+  <div class="col-md-6 text-end">
+    <button id="deleteAllBtn" class="btn btn-danger">
+      <i class="fas fa-trash"></i> Delete All Attendance Logs
+    </button>
+  </div>
 </div>
 <div class="table-responsive">
   <table class="table table-bordered" id="logs-table">
@@ -86,5 +91,25 @@ fetch('/attendance_logs')
   });
 
 document.getElementById('searchInput').addEventListener('input', filterLogs);
+
+document.getElementById('deleteAllBtn').addEventListener('click', function() {
+  if (!confirm('Are you sure you want to delete ALL attendance logs? This action cannot be undone.')) return;
+  fetch('/delete_all_attendance_logs', { method: 'DELETE' })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === 'success') {
+        logsData = [];
+        filteredLogs = [];
+        renderTablePage(1);
+        renderPagination();
+        alert('All attendance logs deleted successfully!');
+      } else {
+        alert('Error deleting logs: ' + data.message);
+      }
+    })
+    .catch(error => {
+      alert('Error deleting logs: ' + error);
+    });
+});
 </script>
 {% endblock %} 

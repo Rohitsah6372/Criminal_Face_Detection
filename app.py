@@ -249,7 +249,7 @@ def gen_frames(video_filename=None, camera_feed_id=None):
                         if not recent_attendance:
                             log = AttendanceLog(
                                 employee_name=name,
-                                attendance_type='cctv' if camera_feed_id else 'live',
+                                attendance_type='live' if camera_feed_id else 'cctv',
                                 camera_feed_id=camera_feed_id,
                                 camera_feed_name=camera_feed.name if camera_feed_id else None,
                                 confidence_score=confidence
@@ -352,13 +352,17 @@ def upload_video_page():
 @app.route('/attendance_logs', methods=['GET'])
 def attendance_logs():
     logs = AttendanceLog.query.order_by(AttendanceLog.timestamp.desc()).all()
+    # Get all employees for image lookup, using trimmed, lowercased names as keys
+    employees = {e.name.strip().lower(): e for e in Employee.query.all()}
+    default_image = 'default.jpg'
     return jsonify([
         {
             'id': log.id,
             'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'employee_name': log.employee_name,
             'attendance_type': log.attendance_type,
-            'camera_feed_name': log.camera_feed_name  # Added for sidebar filter
+            'camera_feed_name': log.camera_feed_name,
+            'image_url': url_for('static', filename=f'uploads/{(employees.get((log.employee_name or '').strip().lower()).image_filename if employees.get((log.employee_name or '').strip().lower()) else default_image)}', _external=True)
         } for log in logs
     ])
 
