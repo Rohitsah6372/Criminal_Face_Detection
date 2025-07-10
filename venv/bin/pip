@@ -1,4 +1,4 @@
-#!/home/rohit_sah/new/venv/bin/python3
+#!/home/rohit_sah/new/venv/bin/python3.10
 # -*- coding: utf-8 -*-
 import re
 import sys

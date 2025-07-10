@@ -7,7 +7,7 @@ from PIL import Image
 import numpy as np
 import cv2
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import threading
 import queue
 
@@ -18,6 +18,7 @@ app.config['SECRET_KEY'] = 'your_secret_key_here'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
+app.config['DETECTION_COOLDOWN_SECONDS'] = 30  # Time window to prevent duplicate detections
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -187,20 +188,20 @@ def upload_video():
     return jsonify({'status': 'success', 'video_filename': filename})
 
 def gen_frames(video_filename=None, camera_feed_id=None):
-    with app.app_context():
+    ctx = app.app_context()
+    ctx.push()
+    camera = None
+    try:
         # Load all criminal encodings
         criminals = Criminal.query.all()
         known_encodings = [c.face_encoding for c in criminals]
         known_names = [c.name for c in criminals]
-    
-    camera = None
-    try:
+
         if camera_feed_id:
             # Get camera feed details
             camera_feed = CameraFeed.query.get(camera_feed_id)
             if not camera_feed or not camera_feed.is_active:
                 return
-            
             # Handle different camera types
             if camera_feed.camera_type == 'device':
                 try:
@@ -216,7 +217,7 @@ def gen_frames(video_filename=None, camera_feed_id=None):
         else:
             # Try to find an available camera
             camera = find_available_camera()
-        
+
         if camera is None or not camera.isOpened():
             # Generate error frame
             error_frame = generate_error_frame("Camera not available")
@@ -224,7 +225,7 @@ def gen_frames(video_filename=None, camera_feed_id=None):
             frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
             return
-        
+
         detected_live = set()
         while True:
             success, frame = camera.read()
@@ -233,39 +234,45 @@ def gen_frames(video_filename=None, camera_feed_id=None):
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             face_locations = face_recognition.face_locations(rgb_frame)
             face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-            
+
             for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
                 matches = face_recognition.compare_faces(known_encodings, face_encoding, tolerance=0.5)
                 name = "Unknown"
                 confidence = 0.0
-                
+
                 for idx, match in enumerate(matches):
                     if match:
                         name = known_names[idx]
                         # Calculate confidence score
                         face_distances = face_recognition.face_distance(known_encodings, face_encoding)
                         confidence = 1 - face_distances[idx]
-                        
-                        if name not in detected_live:
+
+                        # Check if this person was already detected recently (within configurable time window)
+                        cooldown_seconds = app.config.get('DETECTION_COOLDOWN_SECONDS', 30)
+                        recent_detection = DetectionLog.query.filter(
+                            DetectionLog.criminal_name == name,
+                            DetectionLog.timestamp >= datetime.utcnow() - timedelta(seconds=cooldown_seconds)
+                        ).first()
+
+                        if not recent_detection:
+                            log = DetectionLog(
+                                criminal_name=name, 
+                                detection_type='cctv' if camera_feed_id else 'live',
+                                camera_feed_id=camera_feed_id,
+                                camera_feed_name=camera_feed.name if camera_feed_id else None,
+                                confidence_score=confidence
+                            )
+                            db.session.add(log)
+                            db.session.commit()
                             detected_live.add(name)
-                            with app.app_context():
-                                log = DetectionLog(
-                                    criminal_name=name, 
-                                    detection_type='cctv' if camera_feed_id else 'live',
-                                    camera_feed_id=camera_feed_id,
-                                    camera_feed_name=camera_feed.name if camera_feed_id else None,
-                                    confidence_score=confidence
-                                )
-                                db.session.add(log)
-                                db.session.commit()
                         break
-                
+
                 # Draw bounding box and label
                 color = (0, 0, 255) if name != "Unknown" else (0, 255, 0)
                 cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
                 label = f"{name} ({confidence:.2f})" if name != "Unknown" else name
                 cv2.putText(frame, label, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-            
+
             ret, buffer = cv2.imencode('.jpg', frame)
             frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
@@ -279,6 +286,7 @@ def gen_frames(video_filename=None, camera_feed_id=None):
     finally:
         if camera is not None:
             camera.release()
+        ctx.pop()
 
 def find_available_camera():
     """Find an available camera by trying different device indices"""
@@ -358,11 +366,33 @@ def detection_logs():
     logs = DetectionLog.query.order_by(DetectionLog.timestamp.desc()).all()
     return jsonify([
         {
+            'id': log.id,
             'timestamp': log.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
             'criminal_name': log.criminal_name,
             'detection_type': log.detection_type
         } for log in logs
     ])
+
+@app.route('/delete_detection_log/<int:log_id>', methods=['DELETE'])
+def delete_detection_log(log_id):
+    try:
+        log = DetectionLog.query.get_or_404(log_id)
+        db.session.delete(log)
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'Detection log deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/delete_all_detection_logs', methods=['DELETE'])
+def delete_all_detection_logs():
+    try:
+        DetectionLog.query.delete()
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'All detection logs deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/detection_logs_page', methods=['GET'])
 def detection_logs_page():
@@ -495,6 +525,72 @@ def camera_feeds_page():
 @app.route('/cctv_detection_page', methods=['GET'])
 def cctv_detection_page():
     return render_template('cctv_detection.html')
+
+@app.route('/detection_config', methods=['GET'])
+def get_detection_config():
+    return jsonify({
+        'cooldown_seconds': app.config.get('DETECTION_COOLDOWN_SECONDS', 30)
+    })
+
+@app.route('/criminal_status_page', methods=['GET'])
+def criminal_status_page():
+    return render_template('criminal_status.html')
+
+@app.route('/criminal_status_data', methods=['GET'])
+def get_criminal_status_data():
+    """Get real-time criminal status data"""
+    try:
+        # Get all criminals
+        criminals = Criminal.query.all()
+        criminal_data = []
+        
+        # Get recent detection logs
+        cooldown_seconds = app.config.get('DETECTION_COOLDOWN_SECONDS', 30)
+        recent_time = datetime.utcnow() - timedelta(seconds=cooldown_seconds)
+        
+        recent_detections = DetectionLog.query.filter(
+            DetectionLog.timestamp >= recent_time
+        ).all()
+        
+        # Create a map of recent detections
+        recent_detection_map = {}
+        for detection in recent_detections:
+            if detection.criminal_name not in recent_detection_map:
+                recent_detection_map[detection.criminal_name] = []
+            recent_detection_map[detection.criminal_name].append({
+                'timestamp': detection.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+                'detection_type': detection.detection_type,
+                'camera_feed_name': detection.camera_feed_name
+            })
+        
+        # Build status data for each criminal
+        for criminal in criminals:
+            recent_detections_for_criminal = recent_detection_map.get(criminal.name, [])
+            is_present = len(recent_detections_for_criminal) > 0
+            
+            criminal_data.append({
+                'id': criminal.id,
+                'name': criminal.name,
+                'criminal_id': criminal.criminal_id,
+                'image_url': url_for('static', filename=f'uploads/{criminal.image_filename}', _external=True),
+                'status': 'present' if is_present else 'absent',
+                'detection_count': len(recent_detections_for_criminal),
+                'last_detected': recent_detections_for_criminal[-1]['timestamp'] if recent_detections_for_criminal else None,
+                'recent_detections': recent_detections_for_criminal
+            })
+        
+        return jsonify({
+            'criminals': criminal_data,
+            'summary': {
+                'total': len(criminals),
+                'present': len([c for c in criminal_data if c['status'] == 'present']),
+                'absent': len([c for c in criminal_data if c['status'] == 'absent']),
+                'detection_rate': round((len([c for c in criminal_data if c['status'] == 'present']) / len(criminals)) * 100) if criminals else 0,
+                'last_updated': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():

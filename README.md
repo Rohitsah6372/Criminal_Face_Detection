@@ -24,7 +24,7 @@ A comprehensive Flask-based web application for real-time criminal face detectio
 - **Image Processing**: PIL (Python Imaging Library)
 - **Frontend**: HTML, CSS, JavaScript, Bootstrap 5
 - **File Handling**: Werkzeug for secure file uploads
-- **Production Server**: Gunicorn WSGI server
+<!-- - **Production Server**: Gunicorn WSGI server -->
 
 ## 📋 Prerequisites
 
