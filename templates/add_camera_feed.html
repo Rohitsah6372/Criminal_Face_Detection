@@ -92,7 +92,23 @@ document.getElementById('addCameraForm').addEventListener('submit', function(e) 
     .then(data => {
         if (data.status === 'success') {
             alert('Camera feed added successfully!');
-            window.location.href = '/camera_feeds_page';
+            // Fetch the latest camera feeds to get the new feed's ID
+            fetch('/camera_feeds')
+                .then(res => res.json())
+                .then(feeds => {
+                    if (feeds && feeds.length > 0) {
+                        // Find the most recently added feed (highest id)
+                        const sorted = feeds.sort((a, b) => b.id - a.id);
+                        const newFeed = sorted[0];
+                        // Redirect to live detection with the new feed auto-selected
+                        window.location.href = `/live_detection_page?camera_feed_id=${newFeed.id}&auto_start=1`;
+                    } else {
+                        window.location.href = '/live_detection_page';
+                    }
+                })
+                .catch(() => {
+                    window.location.href = '/live_detection_page';
+                });
         } else {
             alert('Error: ' + data.message);
         }

@@ -163,7 +163,8 @@ function testCamera(cameraId) {
 }
 
 function startDetection(cameraId) {
-    window.open(`/cctv_detection_page?camera_id=${cameraId}`, '_blank');
+    // Open live detection page in the same window, with auto-select and auto-start
+    window.location.href = `/live_detection_page?camera_feed_id=${cameraId}&auto_start=1`;
 }
 
 function editCamera(cameraId) {

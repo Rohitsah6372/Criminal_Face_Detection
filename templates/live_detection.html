@@ -91,6 +91,8 @@ function getQueryParam(name) {
 }
 
 const videoParam = getQueryParam('video');
+const cameraFeedIdParam = getQueryParam('camera_feed_id');
+const autoStartParam = getQueryParam('auto_start');
 const img = document.getElementById('live-video');
 const alertDiv = document.getElementById('videoAlert');
 const startBtn = document.getElementById('startCamera');
@@ -143,6 +145,16 @@ function loadCameraFeeds() {
         if (cameraFeeds.length === 1) {
           cameraFeedSelect.selectedIndex = 0;
         }
+        // Auto-select from URL param if present
+        if (cameraFeedIdParam) {
+          cameraFeedSelect.value = cameraFeedIdParam;
+        }
+      }
+      // Auto-start detection if requested
+      if (autoStartParam === '1' && cameraFeedIdParam) {
+        setTimeout(() => {
+          startBtn.click();
+        }, 500);
       }
     })
     .catch(error => {
@@ -357,9 +369,10 @@ function renderDetectionLogs() {
   logsContainer.innerHTML = recentDetections.map((log, index) => {
     const imageUrl = criminalImages[log.criminal_name] || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA4MCA4MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjRjVGNUY1Ii8+CjxwYXRoIGQ9Ik00MCA0MEM0My4zMTM3IDQwIDQ2IDM3LjMxMzcgNDYgMzRDNDYgMzAuNjg2MyA0My4zMTM3IDI4IDQwIDI4QzM2LjY4NjMgMjggMzQgMzAuNjg2MyAzNCAzNEMzNCAzNy4zMTM3IDM2LjY4NjMgNDAgNDAgNDBaIiBmaWxsPSIjQ0NDIi8+CjxwYXRoIGQ9Ik00MCA0NkM0Ny4xNzkgNDYgNTMgNDAuMTc5IDUzIDMzSDUwQzUwIDM4LjUyMiA0NS41MjIgNDMgNDAgNDNDMzQuNDc4IDQzIDMwIDM4LjUyMiAzMCAzM0gyN0MyNyA0MC4xNzkgMzIuODIxIDQ2IDQwIDQ2WiIgZmlsbD0iI0NDQyIvPgo8L3N2Zz4K';
     const detectionType = log.detection_type.charAt(0).toUpperCase() + log.detection_type.slice(1);
-    
+    // Highlight CCTV detections
+    const isCCTV = log.detection_type === 'cctv';
     return `
-      <div class="detection-item mb-3 p-3 border rounded" data-detection-id="${log.id}">
+      <div class="detection-item mb-3 p-3 border rounded${isCCTV ? ' bg-info bg-opacity-10 border-info' : ''}" data-detection-id="${log.id}">
         <div class="row">
           <div class="col-3">
             <img src="${imageUrl}" 
@@ -371,7 +384,7 @@ function renderDetectionLogs() {
           <div class="col-6">
             <h6 class="mb-1 text-danger fw-bold">${log.criminal_name}</h6>
             <p class="mb-1 small text-muted">${log.timestamp}</p>
-            <span class="badge bg-${getDetectionTypeColor(log.detection_type)}">${detectionType}</span>
+            <span class="badge ${isCCTV ? 'bg-info text-dark border border-info' : 'bg-' + getDetectionTypeColor(log.detection_type)}">${detectionType}${isCCTV ? ' (CCTV)' : ''}</span>
           </div>
           <div class="col-3 text-end">
             <button class="btn btn-outline-danger btn-sm delete-detection" 

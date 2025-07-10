@@ -17,25 +17,25 @@
     <div class="collapse navbar-collapse" id="navbarNav">
       <ul class="navbar-nav">
         <li class="nav-item">
-          <a class="nav-link" href="/add_criminal_form">Add Criminal</a>
+          <a class="nav-link{% if request.path == '/add_criminal_form' %} active{% endif %}" href="/add_criminal_form">Add Criminal</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" href="/criminals_page">View Criminals</a>
+          <a class="nav-link{% if request.path == '/criminals_page' %} active{% endif %}" href="/criminals_page">View Criminals</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" href="/live_detection_page">Live Detection</a>
+          <a class="nav-link{% if request.path == '/live_detection_page' %} active{% endif %}" href="/live_detection_page">Live Detection</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" href="/upload_video_page">Upload Video</a>
+          <a class="nav-link{% if request.path == '/upload_video_page' %} active{% endif %}" href="/upload_video_page">Upload Video</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" href="/detection_logs_page">Detection Logs</a>
+          <a class="nav-link{% if request.path == '/detection_logs_page' %} active{% endif %}" href="/detection_logs_page">Detection Logs</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" href="/criminal_status_page">Criminal Status</a>
+          <a class="nav-link{% if request.path == '/criminal_status_page' %} active{% endif %}" href="/criminal_status_page">Criminal Status</a>
         </li>
         <li class="nav-item">
-          <a class="nav-link" href="/camera_feeds_page">Camera Feeds</a>
+          <a class="nav-link{% if request.path == '/camera_feeds_page' %} active{% endif %}" href="/camera_feeds_page">Camera Feeds</a>
         </li>
       </ul>
     </div>
