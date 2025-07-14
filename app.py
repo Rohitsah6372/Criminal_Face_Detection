@@ -10,6 +10,13 @@ import time
 from datetime import datetime, timedelta
 import threading
 import queue
+import dlib 
+
+if dlib.DLIB_USE_CUDA:
+    print("Running on GPU")
+else:
+    print("Running on CPU")
+
 
 app = Flask(__name__)
 
@@ -362,7 +369,10 @@ def attendance_logs():
             'employee_name': log.employee_name,
             'attendance_type': log.attendance_type,
             'camera_feed_name': log.camera_feed_name,
-            'image_url': url_for('static', filename=f'uploads/{(employees.get((log.employee_name or '').strip().lower()).image_filename if employees.get((log.employee_name or '').strip().lower()) else default_image)}', _external=True)
+            # Refactored image_url assignment for clarity and efficiency
+            'image_url': (lambda employee: url_for('static', filename=f'uploads/{employee.image_filename if employee else default_image}', _external=True))(
+                employees.get((log.employee_name or '').strip().lower())
+            )
         } for log in logs
     ])
 
