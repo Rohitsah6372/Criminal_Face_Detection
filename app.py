@@ -210,9 +210,20 @@ def gen_frames(video_filename=None, camera_feed_id=None):
                 return
             if camera_feed.camera_type == 'device':
                 try:
-                    camera = cv2.VideoCapture(int(camera_feed.camera_url))
+                    cam_index = int(camera_feed.camera_url)
+                    # Check if the device index is available
+                    test_cam = cv2.VideoCapture(cam_index)
+                    if not test_cam.isOpened():
+                        error_frame = generate_error_frame(f"Camera device index {cam_index} not available")
+                        ret, buffer = cv2.imencode('.jpg', error_frame)
+                        frame_bytes = buffer.tobytes()
+                        yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                        test_cam.release()
+                        return
+                    test_cam.release()
+                    camera = cv2.VideoCapture(cam_index)
                 except ValueError:
-                    camera = cv2.VideoCapture(0)
+                    camera = find_available_camera()
             else:
                 camera = cv2.VideoCapture(camera_feed.camera_url)
         elif video_filename:
@@ -493,7 +504,13 @@ def test_camera_feed(camera_feed_id):
     try:
         if camera_feed.camera_type == 'device':
             try:
-                camera = cv2.VideoCapture(int(camera_feed.camera_url))
+                cam_index = int(camera_feed.camera_url)
+                # Check if the device index is available
+                test_cam = cv2.VideoCapture(cam_index)
+                if not test_cam.isOpened():
+                    return jsonify({'status': 'error', 'message': f'Camera device index {cam_index} not available'}), 400
+                test_cam.release()
+                camera = cv2.VideoCapture(cam_index)
             except ValueError:
                 # Try to find an available camera
                 camera = find_available_camera()
